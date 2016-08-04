@@ -16,7 +16,7 @@
 
 package openssl
 
-// #cgo linux pkg-config: openssl
+// #cgo linux LDFLAGS:  -lssl -lcrypt -L/usr/lib64
 // #cgo windows CFLAGS: -DWIN32_LEAN_AND_MEAN
 // #cgo darwin CFLAGS: -Wno-deprecated-declarations
 // #cgo darwin LDFLAGS: -lssl -lcrypto
