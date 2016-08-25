@@ -11,7 +11,6 @@ import (
 	"github.com/mongodb/mongo-tools/common/options"
 	"github.com/mongodb/mongo-tools/common/password"
 	"github.com/mongodb/mongo-tools/common/signals"
-	"github.com/mongodb/mongo-tools/common/text"
 	"github.com/mongodb/mongo-tools/common/util"
 	"github.com/mongodb/mongo-tools/mongostat"
 	"github.com/mongodb/mongo-tools/mongostat/stat_consumer"
@@ -52,10 +51,18 @@ func main() {
 		"mongostat",
 		mongostat.Usage,
 		options.EnabledOptions{Connection: true, Auth: true, Namespace: false})
+	opts.UseReadOnlyHostDescription()
 
 	// add mongostat-specific options
 	statOpts := &mongostat.StatOptions{}
 	opts.AddOptions(statOpts)
+
+	interactiveOption := opts.FindOptionByLongName("interactive")
+	if _, available := stat_consumer.FormatterConstructors["interactive"]; !available {
+		// make --interactive inaccessible
+		interactiveOption.LongName = ""
+		interactiveOption.ShortName = 0
+	}
 
 	args, err := opts.Parse()
 	if err != nil {
@@ -100,6 +107,11 @@ func main() {
 		os.Exit(util.ExitBadOptions)
 	}
 
+	if statOpts.Interactive && statOpts.Json {
+		log.Logvf(log.Always, "cannot use output formats --json and --interactive together")
+		os.Exit(util.ExitBadOptions)
+	}
+
 	if statOpts.Deprecated && !statOpts.Json {
 		log.Logvf(log.Always, "--useDeprecatedJsonKeys can only be used when --json is also specified")
 		os.Exit(util.ExitBadOptions)
@@ -121,16 +133,15 @@ func main() {
 		opts.Auth.Password = password.Prompt()
 	}
 
-	var formatter stat_consumer.LineFormatter
+	var factory stat_consumer.FormatterConstructor
 	if statOpts.Json {
-		formatter = &stat_consumer.JSONLineFormatter{}
+		factory = stat_consumer.FormatterConstructors["json"]
+	} else if statOpts.Interactive {
+		factory = stat_consumer.FormatterConstructors["interactive"]
 	} else {
-		formatter = &stat_consumer.GridLineFormatter{
-			IncludeHeader:  !statOpts.NoHeaders,
-			HeaderInterval: 10,
-			Writer:         &text.GridWriter{ColumnPadding: 1},
-		}
+		factory = stat_consumer.FormatterConstructors[""]
 	}
+	formatter := factory(statOpts.RowCount, !statOpts.NoHeaders)
 
 	cliFlags := 0
 	if statOpts.Columns == "" {

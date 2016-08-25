@@ -4,6 +4,7 @@ package options
 
 import (
 	"github.com/jessevdk/go-flags"
+	"github.com/mongodb/mongo-tools/common/failpoint"
 	"github.com/mongodb/mongo-tools/common/log"
 
 	"fmt"
@@ -16,8 +17,8 @@ import (
 
 // Gitspec that the tool was built with. Needs to be set using -ldflags
 var (
-	VersionStr = "not-built-with-ldflags"
-	Gitspec    = "not-built-with-ldflags"
+	VersionStr = "built-without-version-string"
+	Gitspec    = "built-without-git-spec"
 )
 
 // Struct encompassing all of the options that are reused across tools: "help",
@@ -64,7 +65,8 @@ type General struct {
 	Help    bool `long:"help" description:"print usage"`
 	Version bool `long:"version" description:"print the tool version and exit"`
 
-	MaxProcs int `long:"numThreads" default:"0" hidden:"true"`
+	MaxProcs   int    `long:"numThreads" default:"0" hidden:"true"`
+	Failpoints string `long:"failpoints" hidden:"true"`
 }
 
 // Struct holding verbosity-related options
@@ -177,6 +179,9 @@ func New(appName, usageStr string, enabled EnabledOptions) *ToolOptions {
 		panic(fmt.Errorf("couldn't register verbosity options: %v", err))
 	}
 
+	// this call disables failpoints if compiled without failpoint support
+	EnableFailpoints(opts)
+
 	if enabled.Connection {
 		if _, err := opts.parser.AddGroup("connection options", "", opts.Connection); err != nil {
 			panic(fmt.Errorf("couldn't register connection options: %v", err))
@@ -207,6 +212,20 @@ func New(appName, usageStr string, enabled EnabledOptions) *ToolOptions {
 	log.Logvf(log.Info, "Setting num cpus to %v", opts.MaxProcs)
 	runtime.GOMAXPROCS(opts.MaxProcs)
 	return opts
+}
+
+// UseReadOnlyHostDescription changes the help description of the --host arg to
+// not mention the shard/host:port format used in the data-mutating tools
+func (o *ToolOptions) UseReadOnlyHostDescription() {
+	hostOpt := o.parser.FindOptionByLongName("host")
+	hostOpt.Description = "mongodb host(s) to connect to (use commas to delimit hosts)"
+}
+
+// FindOptionByLongName finds an option in any of the added option groups by
+// matching its long name; useful for modifying the attributes (e.g. description
+// or name) of an option
+func (o *ToolOptions) FindOptionByLongName(name string) *flags.Option {
+	return o.parser.FindOptionByLongName(name)
 }
 
 // Print the usage message for the tool to stdout.  Returns whether or not the
@@ -284,7 +303,9 @@ func (o *ToolOptions) AddOptions(opts ExtraOptions) {
 // Parse the command line args.  Returns any extra args not accounted for by
 // parsing, as well as an error if the parsing returns an error.
 func (o *ToolOptions) Parse() ([]string, error) {
-	return o.parser.Parse()
+	args, err := o.parser.Parse()
+	failpoint.ParseFailpoints(o.Failpoints)
+	return args, err
 }
 
 func (opts *ToolOptions) handleUnknownOption(option string, arg flags.SplitArgument, args []string) ([]string, error) {
