@@ -1,6 +1,13 @@
 # -*- mode:python; coding:utf-8; -*-
 
-env=Environment()
+vars = Variables('custom.py')
+vars.Add(ListVariable('GOTAGS', 'Set GOTAGS', [],
+                    ['ssl', 'sasl']))
+
+env=Environment(variables = vars)
+Help(vars.GenerateHelpText(env))
+
+
 env['GOPATH'] = ['/media/sf_mongodb/mongo-tools/.gopath', '/media/sf_mongodb/mongo-tools/vendor']
 env['GOFLAGS'] = ' -x '
 env['GO'] = '/usr/local/go/bin/go'
